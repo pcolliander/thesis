@@ -1,34 +1,109 @@
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.*;
 import java.util.*;
+import java.io.*;
+
+import java.net.*;
+
+import marmot.morph.cmd.Trainer;
+import marmot.morph.cmd.Annotator;;
+
+class ThreadTest implements Runnable {
+
+  public void run() {
+    System.out.println("hello from thread");
+  }
+
+}
 
 class nlp {
+  private static final long MEGABYTE = 1024L * 1024L;
   static SentencesCollection annotatedSentences;
   static SentencesCollection corroboratedSentences;
+  static int threadCount = 1;
 
-  public static void main(String[] args) { 
+  public static void main(String[] args) throws IOException {
+
+    for (int i=0; i < threadCount; i++) {
+      new Thread(new Runnable() {
+        public void run() { upvoteSimulation(); }
+      }).start();
+    }
+  
+
+    while(corroboratedSentences.size() < 100) {
+      try {
+        wait();
+      } catch (InterruptedException e) {}
+    }
+     // (new Thread(new ThreadTest())).start();
+
+    // readTxtFile(args[0]);
+    //
+    // annotatedSentences.size();
+    // corroboratedSentences.size();
+    //
+    // upvoteSimulation();
+    // // annotatedSentences.print(); 
+    // // corroboratedSentences.print(); 
+    // memoryUsage();
+    // annotatedSentences.size();
+    // corroboratedSentences.size();
+    //
+    // Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "en.marmot" });
+    //
+    // memoryUsage();
+    // annotatedSentences.size();
+    // corroboratedSentences.size();
+    //
+    // Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "test" });
+    //
+    // memoryUsage();
+    // annotatedSentences.size();
+    // corroboratedSentences.size();
+  }
+
+  static void readTxtFile(String file) throws IOException {
     annotatedSentences = new SentencesCollection();
     corroboratedSentences = new SentencesCollection();
 
-    String[] sentences = {"my name is bob", "my name is bobba", "my name is bobba fett", "my name is guy", "my name is guy richie", "my name is anders", "my name is lena" }; 
+		BufferedReader reader = new BufferedReader (new FileReader (file));
 
-    simulation(sentences);
-    printme();
-  }
+		String str;
+    String sentence = "";
+    ArrayList<String> words = new ArrayList<String>();
+    ArrayList<String> tags = new ArrayList<String>();
+    // int i = 0;
 
-  static void simulation(String[] sentences) {
-    addAnnotatedTextSimulation(sentences);
-    upvoteSimulation();
-  }
+		while((str = reader.readLine() ) != null ) {
+      if (str.contains("#")) {
+        sentence = str;
+      }
 
-  static void addAnnotatedTextSimulation(String[] sentences) {
-    for (String sentence : sentences) {
-      String[] words = sentence.split(" ");
-      String[] tags = sentence.split(" ");
-      annotatedSentences.addSentence(new TaggedSentence(sentence, words, tags));
+      if (str.length() == 0) {
+        annotatedSentences.addSentence(new TaggedSentence(sentence, words, tags));
+        words = new ArrayList<String>();
+        tags = new ArrayList<String>();
+      }
+      while (!str.contains("#") && str.length() > 0) {
+        String[] sent = str.split("\\t");
+        words.add(sent[1]);
+        tags.add(sent[3]);
+        break;
+      }
     }
   }
 
+  static void memoryUsage() {
+    Runtime runtime = Runtime.getRuntime();
+    runtime.gc();
+    long memory = runtime.totalMemory() - runtime.freeMemory();
+    System.out.println();
+    System.out.println("Used memory is bytes: " + memory);
+    System.out.println("Used memory is megabytes: " + bytesToMegabytes(memory));
+  }
+
+  // should probably run this in paralell ? As right now all the upvotes are done sequentially.
   static void upvoteSimulation() {
     Set<Integer> keys = annotatedSentences.getKeys();
 
@@ -38,6 +113,18 @@ class nlp {
       }
 
       keys = annotatedSentences.getKeys();
+    }
+  }
+
+  synchronized static void upvote(int id) { 
+    TaggedSentence sentence = annotatedSentences.getSentence(id);
+    if (sentence == null) return;
+
+    annotatedSentences.upvoteSentence(id);
+
+    if (sentence.getUpvotes() > 3000) {
+      annotatedSentences.removeSentence(id);
+      corroboratedSentences.addSentence(sentence);
     }
   }
 
@@ -52,26 +139,18 @@ class nlp {
     corroboratedSentences.print();
   }
 
-  synchronized static void upvote(int id) { 
-    TaggedSentence sentence = annotatedSentences.getSentence(id);
-    if (sentence == null) return;
-
-    annotatedSentences.upvoteSentence(id);
-
-    if (sentence.getUpvotes() > 3) {
-      annotatedSentences.removeSentence(id);
-      corroboratedSentences.addSentence(sentence);
-    }
+  static long bytesToMegabytes(long bytes) {
+    return bytes / MEGABYTE;
   }
 }
 
 class SentencesCollection {
   private ConcurrentHashMap<Integer, TaggedSentence> sentences;
-  public SentencesCounter counter;
+  private AtomicInteger counter;
 
   public SentencesCollection() { 
     this.sentences = new ConcurrentHashMap<Integer, TaggedSentence>();
-    this.counter = new SentencesCounter("Annotated Sentences");
+    this.counter = new AtomicInteger();
   }
 
   public synchronized void addSentence(TaggedSentence sentence) {
@@ -104,16 +183,16 @@ class SentencesCollection {
     decrementCounter();
   }
 
-  public void incrementCounter() {
-    counter.increment();
+  public int incrementCounter() {
+    return counter.incrementAndGet();
   }
 
-  public void decrementCounter() {
-    counter.decrement();
+  public int decrementCounter() {
+    return counter.decrementAndGet();
   }
 
   public int getCounterValue() {
-    return counter.getValue();
+    return counter.get();
   }
 
   public void print() {
@@ -121,38 +200,19 @@ class SentencesCollection {
       System.out.println(sentence);
     }
   }
-}
 
-// use to initialise the counters.
-class SentencesCounter {
-  String name;
-  private AtomicInteger counter;
-
-  public SentencesCounter(String name) {
-    this.name = name;
-    counter = new AtomicInteger();
-  }
-
-  public int getValue() {
-    return counter.get();
-  }
-
-  public int increment() {
-    return counter.incrementAndGet();
-  }
-
-  public int decrement() {
-    return counter.decrementAndGet();
+  public int size() {
+    return sentences.size();
   }
 }
 
 class TaggedSentence {
   private AtomicInteger counter;
   private String sentence;
-  private String[] words;
-  private String[] tags;
+  private ArrayList<String> words;
+  private ArrayList<String> tags;
 
-  public TaggedSentence(String originalSentence, String[] words, String[] tags) {
+  public TaggedSentence(String originalSentence, ArrayList<String> words, ArrayList<String> tags) {
     this.sentence = originalSentence;  
     this.words = words;
     this.tags = tags;
@@ -172,8 +232,8 @@ class TaggedSentence {
     return "\noriginal sentence: " + sentence + 
       "\nupvote count: " + 
       counter.get() + 
-      "\ntags:" + Arrays.toString(tags)  + 
-      "\nwords:" + Arrays.toString(words);
+      "\ntags:" + tags + 
+      "\nwords:" + words;
   }
 }
 
