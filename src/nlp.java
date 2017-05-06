@@ -3,24 +3,10 @@ import java.util.concurrent.*;
 import java.util.*;
 import java.io.*;
 
-import java.net.*;
-
 import marmot.morph.cmd.Trainer;
 import marmot.morph.cmd.Annotator;;
 
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.Executors;
-
-class ThreadTest implements Runnable {
-
-  public void run() {
-    System.out.println("hello from thread");
-  }
-
-}
-
 class nlp {
-  private static final long MEGABYTE = 1024L * 1024L;
   static SentencesCollection annotatedSentences;
   static SentencesCollection corroboratedSentences;
 
@@ -29,37 +15,64 @@ class nlp {
    };
 
    static final Runnable trainingModelSimulationTask = new Runnable() {
-     public void run() { Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph",  "false", "-model-file", "en.marmot" }); }
+     public void run() { Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,outputfilepontus.txt", "-tag-morph",  "false", "-model-file", "en.marmot" }); }
    };
 
    static final Runnable annotatingModelSimulationTask = new Runnable() {
-     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "test" }); }
+     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggingFromTrainedModelWithBadFeedback" }); 
+      // memoryUsage("after annotation simulation");
+     }
    };
 
+  static Executor e = Executors.newCachedThreadPool();
   public static void main(String[] args) throws IOException {
-
     readTxtFile(args[0]);
-    Executor e = Executors.newCachedThreadPool();
+
+    outputTxtFile();
+
+    concurrencySimulation();
+
+    annotateAndCompare();
+
+
+  }
+
+  static public void annotateAndCompare() {
+    e.execute(annotatingModelSimulationTask);
+  }
+
+  static public void concurrencySimulation() {
     System.out.println("e" + e);
 
-    memoryUsage("Before anything" );
+    // memoryUsage("Before anything" );
     while (annotatedSentences.size() > 0) {
      e.execute(upvoteSimulationTask);
     }
     System.out.println("e" + e);
 
-    memoryUsage("upvote simulation");
+    // memoryUsage("upvote simulation");
 
-    for (int i=0; i < 10; i++) {
+    // for (int i=0; i < 1; i++) {
       e.execute(trainingModelSimulationTask);
-    }
+    // }
   }
 
-  public void outputTxtFile() {
-    for(TaggedSentence sentence  : corroboratedSentences.getSentences().values()) {
-      System.out.println(sentence);
-    }
 
+  static public void outputTxtFile() throws IOException {
+    BufferedWriter writer = new BufferedWriter(new FileWriter("outputfilepontus.txt"));
+
+    int i = 1;
+    ArrayList<String> tags;
+    for(TaggedSentence sentence  : annotatedSentences.getSentences().values()) {
+      i = 1;
+      tags = sentence.getTags();
+      for(String word : sentence.getWords()) {
+        writer.write(i + "\t" + word + "\t" + "_" + "\t" + "_" + "\t" + tags.get(i-1) + "\n");
+        i++;
+      }
+      // writer.write("\n");
+    }
+      writer.flush();
   }
 
   static void upvoteSimulation() {
@@ -137,6 +150,7 @@ class nlp {
   }
 
   static long bytesToMegabytes(long bytes) {
+    final long MEGABYTE = 1024L * 1024L;
     return bytes / MEGABYTE;
   }
 }
@@ -223,6 +237,14 @@ class TaggedSentence {
 
   public int upvote() {
     return counter.incrementAndGet();
+  }
+
+  public ArrayList<String> getWords() {
+    return words;
+  }
+
+  public ArrayList<String> getTags() {
+    return tags;
   }
 
   public String toString() {
