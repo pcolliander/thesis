@@ -8,6 +8,9 @@ import java.net.*;
 import marmot.morph.cmd.Trainer;
 import marmot.morph.cmd.Annotator;;
 
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.Executors;
+
 class ThreadTest implements Runnable {
 
   public void run() {
@@ -20,47 +23,65 @@ class nlp {
   private static final long MEGABYTE = 1024L * 1024L;
   static SentencesCollection annotatedSentences;
   static SentencesCollection corroboratedSentences;
-  static int threadCount = 1;
+
+   static final Runnable upvoteSimulationTask = new Runnable() {
+      public void run() { upvoteSimulation(); }
+   };
+
+   static final Runnable trainingModelSimulationTask = new Runnable() {
+     public void run() { Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph",  "false", "-model-file", "en.marmot" }); }
+   };
+
+   static final Runnable annotatingModelSimulationTask = new Runnable() {
+     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "test" }); }
+   };
 
   public static void main(String[] args) throws IOException {
 
-    for (int i=0; i < threadCount; i++) {
-      new Thread(new Runnable() {
-        public void run() { upvoteSimulation(); }
-      }).start();
-    }
-  
+    readTxtFile(args[0]);
+    Executor e = Executors.newCachedThreadPool();
+    System.out.println("e" + e);
 
-    while(corroboratedSentences.size() < 100) {
-      try {
-        wait();
-      } catch (InterruptedException e) {}
+    memoryUsage("Before anything" );
+    while (annotatedSentences.size() > 0) {
+     e.execute(upvoteSimulationTask);
     }
-     // (new Thread(new ThreadTest())).start();
+    System.out.println("e" + e);
 
-    // readTxtFile(args[0]);
-    //
-    // annotatedSentences.size();
-    // corroboratedSentences.size();
-    //
-    // upvoteSimulation();
-    // // annotatedSentences.print(); 
-    // // corroboratedSentences.print(); 
-    // memoryUsage();
-    // annotatedSentences.size();
-    // corroboratedSentences.size();
-    //
-    // Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "en.marmot" });
-    //
-    // memoryUsage();
-    // annotatedSentences.size();
-    // corroboratedSentences.size();
-    //
-    // Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "test" });
-    //
-    // memoryUsage();
-    // annotatedSentences.size();
-    // corroboratedSentences.size();
+    memoryUsage("upvote simulation");
+
+    for (int i=0; i < 10; i++) {
+      e.execute(trainingModelSimulationTask);
+    }
+  }
+
+  public void outputTxtFile() {
+    for(TaggedSentence sentence  : corroboratedSentences.getSentences().values()) {
+      System.out.println(sentence);
+    }
+
+  }
+
+  static void upvoteSimulation() {
+    Set<Integer> keys = annotatedSentences.getKeys();
+    int i = 0;
+      for (int key : keys) {
+        if (i > 10) break;
+        upvote(key);
+        i++;
+      }
+  }
+
+  synchronized static void upvote(int id) { 
+    TaggedSentence sentence = annotatedSentences.getSentence(id);
+    if (sentence == null) return;
+
+    annotatedSentences.upvoteSentence(id);
+
+    if (sentence.getUpvotes() > 50) {
+      annotatedSentences.removeSentence(id);
+      corroboratedSentences.addSentence(sentence);
+    }
   }
 
   static void readTxtFile(String file) throws IOException {
@@ -73,7 +94,6 @@ class nlp {
     String sentence = "";
     ArrayList<String> words = new ArrayList<String>();
     ArrayList<String> tags = new ArrayList<String>();
-    // int i = 0;
 
 		while((str = reader.readLine() ) != null ) {
       if (str.contains("#")) {
@@ -94,39 +114,16 @@ class nlp {
     }
   }
 
-  static void memoryUsage() {
+  static void memoryUsage(String cause) {
     Runtime runtime = Runtime.getRuntime();
     runtime.gc();
     long memory = runtime.totalMemory() - runtime.freeMemory();
     System.out.println();
+    System.out.println("Runned after " + cause);
     System.out.println("Used memory is bytes: " + memory);
     System.out.println("Used memory is megabytes: " + bytesToMegabytes(memory));
   }
 
-  // should probably run this in paralell ? As right now all the upvotes are done sequentially.
-  static void upvoteSimulation() {
-    Set<Integer> keys = annotatedSentences.getKeys();
-
-    while (keys.size() > 0) {
-      for (int key : keys) {
-        upvote(key);
-      }
-
-      keys = annotatedSentences.getKeys();
-    }
-  }
-
-  synchronized static void upvote(int id) { 
-    TaggedSentence sentence = annotatedSentences.getSentence(id);
-    if (sentence == null) return;
-
-    annotatedSentences.upvoteSentence(id);
-
-    if (sentence.getUpvotes() > 3000) {
-      annotatedSentences.removeSentence(id);
-      corroboratedSentences.addSentence(sentence);
-    }
-  }
 
   static void printme() {
     System.out.println();
