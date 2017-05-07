@@ -10,16 +10,18 @@ class nlp {
   static SentencesCollection annotatedSentences;
   static SentencesCollection corroboratedSentences;
 
+  static String[] allTags = { "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X"};
+
    static final Runnable upvoteSimulationTask = new Runnable() {
       public void run() { upvoteSimulation(); }
    };
 
    static final Runnable trainingModelSimulationTask = new Runnable() {
-     public void run() { Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,outputfilepontus.txt", "-tag-morph",  "false", "-model-file", "en.marmot" }); }
+     public void run() { Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,outputfilepontus.conll", "-tag-morph",  "false", "-model-file", "en.marmot" }); }
    };
 
    static final Runnable annotatingModelSimulationTask = new Runnable() {
-     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggingFromTrainedModelWithBadFeedback" }); 
+     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,outputfilespontus.conll",  "--pred-file", "taggingFromTrainedModelWithBadFeedback" }); 
       // memoryUsage("after annotation simulation");
      }
    };
@@ -28,18 +30,53 @@ class nlp {
   public static void main(String[] args) throws IOException {
     readTxtFile(args[0]);
 
+    // concurrencySimulation();
+
+    corruptTags(50);
     outputTxtFile();
-
-    concurrencySimulation();
-
-    annotateAndCompare();
-
-
+    // annotateAndCompare();
+    // e.execute(annotatingModelSimulationTask);
   }
 
-  static public void annotateAndCompare() {
-    e.execute(annotatingModelSimulationTask);
+  static void corruptTags(int percentage) {
+
+    HashSet<Integer> rand_nums;
+
+    for(TaggedSentence sentence : annotatedSentences.getSentences().values()) {
+
+      rand_nums = new HashSet<>();
+      int X = (percentage * sentence.getWordCount()) / 100;
+      for(int i = 0; i < sentence.getSize(); i++) {
+        rand_nums.add(i);
+      }
+
+      int x = 0;
+      for (int index : rand_nums) {
+        if (x == X) break;
+        sentence.corruptTag(index, getDifferentTag(sentence.getTag(index)));
+          x++;
+      }
+
+    }
   }
+
+  static public String getDifferentTag(String tag) {
+
+    int randomNum = ThreadLocalRandom.current().nextInt(0, allTags.length);
+
+    String newTag = allTags[randomNum];
+
+    while (newTag == tag) {
+      randomNum = ThreadLocalRandom.current().nextInt(0, allTags.length);
+      tag = allTags[randomNum];
+    }
+
+    return newTag;
+  }
+
+  // static public void annotateAndCompare() {
+    // e.execute(annotatingModelSimulationTask);
+  // }
 
   static public void concurrencySimulation() {
     System.out.println("e" + e);
@@ -59,7 +96,7 @@ class nlp {
 
 
   static public void outputTxtFile() throws IOException {
-    BufferedWriter writer = new BufferedWriter(new FileWriter("outputfilepontus.txt"));
+    BufferedWriter writer = new BufferedWriter(new FileWriter("outputfilepontusCorrupt.conll"));
 
     int i = 1;
     ArrayList<String> tags;
@@ -70,7 +107,7 @@ class nlp {
         writer.write(i + "\t" + word + "\t" + "_" + "\t" + "_" + "\t" + tags.get(i-1) + "\n");
         i++;
       }
-      // writer.write("\n");
+      writer.write("\n");
     }
       writer.flush();
   }
@@ -235,6 +272,10 @@ class TaggedSentence {
     return counter.get();
   }
 
+  public int getSize() {
+    return words.size();
+  }
+
   public int upvote() {
     return counter.incrementAndGet();
   }
@@ -245,6 +286,18 @@ class TaggedSentence {
 
   public ArrayList<String> getTags() {
     return tags;
+  }
+
+  public String getTag(int index) {
+    return tags.get(index);
+  }
+
+  int getWordCount() {
+    return words.size();
+  }
+
+  synchronized public void corruptTag(int index, String corruptTag) {
+    tags.set(index, corruptTag);
   }
 
   public String toString() {
