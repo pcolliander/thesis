@@ -3,6 +3,8 @@ import java.util.concurrent.*;
 import java.util.*;
 import java.io.*;
 
+import java.util.UUID;
+
 import marmot.morph.cmd.Trainer;
 import marmot.morph.cmd.Annotator;;
 
@@ -42,7 +44,7 @@ class nlp {
 
     HashSet<Integer> rand_nums;
 
-    for(TaggedSentence sentence : annotatedSentences.getSentences().values()) {
+    for(TaggedSentence sentence : annotatedSentences.getSentences()) {
 
       rand_nums = new HashSet<>();
       int X = (percentage * sentence.getWordCount()) / 100;
@@ -100,7 +102,7 @@ class nlp {
 
     int i = 1;
     ArrayList<String> tags;
-    for(TaggedSentence sentence  : annotatedSentences.getSentences().values()) {
+    for(TaggedSentence sentence  : annotatedSentences.getSentences()) {
       i = 1;
       tags = sentence.getTags();
       for(String word : sentence.getWords()) {
@@ -113,16 +115,16 @@ class nlp {
   }
 
   static void upvoteSimulation() {
-    Set<Integer> keys = annotatedSentences.getKeys();
+    Set<UUID> keys = annotatedSentences.getKeys();
     int i = 0;
-      for (int key : keys) {
+      for (UUID key : keys) {
         if (i > 10) break;
         upvote(key);
         i++;
       }
   }
 
-  synchronized static void upvote(int id) { 
+  synchronized static void upvote(UUID id) { 
     TaggedSentence sentence = annotatedSentences.getSentence(id);
     if (sentence == null) return;
 
@@ -193,40 +195,38 @@ class nlp {
 }
 
 class SentencesCollection {
-  private ConcurrentHashMap<Integer, TaggedSentence> sentences;
+  private ConcurrentHashMap<UUID, TaggedSentence> sentences;
   private AtomicInteger counter;
 
   public SentencesCollection() { 
-    this.sentences = new ConcurrentHashMap<Integer, TaggedSentence>();
+    this.sentences = new ConcurrentHashMap<UUID, TaggedSentence>();
     this.counter = new AtomicInteger();
   }
 
   public synchronized void addSentence(TaggedSentence sentence) {
-    int id = (int) (Math.random() * 1000000000);
-
-    sentences.put(id, sentence);
+    sentences.put(UUID.randomUUID(), sentence);
     incrementCounter();
   }
 
-  public ConcurrentHashMap<Integer, TaggedSentence> getSentences() {
-    return sentences;
+  public Collection<TaggedSentence> getSentences() {
+    return sentences.values();
   }
 
-  public Set<Integer> getKeys() {
+  public Set<UUID> getKeys() {
     return sentences.keySet();
   }
 
-  public void upvoteSentence(int id) {
+  public void upvoteSentence(UUID id) {
     if (getSentence(id) == null) return;
 
     getSentence(id).upvote();
   }
 
-  public TaggedSentence getSentence(int id) {
+  public TaggedSentence getSentence(UUID id) {
     return sentences.get(id);
   }
 
-  public void removeSentence(int id) {
+  public void removeSentence(UUID id) {
     sentences.remove(id);
     decrementCounter();
   }
