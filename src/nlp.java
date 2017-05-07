@@ -70,7 +70,7 @@ class nlp {
 
     while (newTag == tag) {
       randomNum = ThreadLocalRandom.current().nextInt(0, allTags.length);
-      tag = allTags[randomNum];
+      newTag = allTags[randomNum];
     }
 
     return newTag;
