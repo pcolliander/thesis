@@ -13,7 +13,11 @@ class Application {
 
   public static void main(String[] args) throws IOException {
 
-    Executor executor = Executors.newCachedThreadPool();
+    // Creates a thread pool that creates new threads as needed, but will reuse previously constructed threads when they are available.
+    Executor executor = Executors.newFixedThreadPool(50);
+
+    // int numberOfUsers =;
+
     nlp app = new nlp(50, executor);
     app.simulation(args[0]);
   }
@@ -28,19 +32,19 @@ class nlp {
   Executor executor;
 
   boolean tagsetWritten = false;
+  boolean hasEnoughCorroboratedSentences = false;
   boolean modelTrained = false;
-  // Creates a thread pool that creates new threads as needed, but will reuse previously constructed threads when they are available.
 
   final Runnable upvoteSimulationTask = new Runnable() {
-    public void run() { upvoteSimulation(); }
+    public void run() { upvoteSimulation(); hasEnoughCorroboratedSentences = true;}
   };
 
-  final Runnable trainingModelSimulationTask = new Runnable() {
-    public void run() { 
-      Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
-      modelTrained = true; 
-    }
-  };
+  // final Callable<Boolean> trainingModelSimulationTask = new Callable<Boolean>() {
+  //   public Boolean call() { 
+  //     Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
+  //     return true;
+  //   }
+  // };
 
   final Runnable annotatingModelSimulationTask = new Runnable() {
     public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); }
@@ -50,6 +54,8 @@ class nlp {
   public nlp(int percentageppercentageOfCorruptFeedback, Executor e) {
     this.percentageOfCorruptFeedback = percentageppercentageOfCorruptFeedback;
     executor = e;
+    annotatedSentences = new SentencesCollection();
+    corroboratedSentences = new SentencesCollection();
   }
 
   synchronized public void simulation(String file) throws IOException {
@@ -57,15 +63,28 @@ class nlp {
     readTxtFile(file);
     // printme();
 
-    int i = 0;
-    while (annotatedSentences.size() > 0 && i < 50) {
+    while (annotatedSentences.size() > 0) {
      executor.execute(upvoteSimulationTask);
-     i++;
+     // System.out.println("annotated size: " + annotatedSentences.size());
+     // if (corroboratedSentences.size() > 1) {
+       // System.out.println("corroborated size: " + corroboratedSentences.size());
+     // }
     }
-    System.out.println("e" + executor);
+
+    // System.out.println("after");
+    // System.out.println("e" + executor);
     // concurrencySimulation();
     // System.out.println("concurrenySimulation finished");
     // corruptTags(50);
+
+    while (!hasEnoughCorroboratedSentences) {
+      try {
+        wait();
+      } catch (InterruptedException e) {}
+    }
+
+
+    System.out.println("writing text file.");
     outputTxtFile();
 
     while (!tagsetWritten) {
@@ -74,27 +93,30 @@ class nlp {
       } catch (InterruptedException e) {}
     }
 
-    executor.execute(trainingModelSimulationTask);
+    System.out.println(executor);
+
     System.out.println("trainingModelSimulation started");
+
+    System.out.println(executor);
+
+    // (if task) the variable is set in another thread, need to return the value from it "Callable."
+    Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
+    modelTrained = true;
 
     while (!modelTrained) {
       try {
         wait();
       } catch (InterruptedException e) {}
     }
-    executor.execute(annotatingModelSimulationTask);
+    // executor.execute(annotatingModelSimulationTask);
     System.out.println("annotatingModelSimlation started");
+    Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); 
   }
 
   public void concurrencySimulation() {
     System.out.println("e" + executor);
-
-    // memoryUsage("Before anything" );
-
-    // memoryUsage("upvote simulation");
-
     // for (int i=0; i < 1; i++) {
-      executor.execute(trainingModelSimulationTask);
+      // executor.execute(trainingModelSimulationTask);
     // }
   }
 
@@ -129,20 +151,19 @@ class nlp {
     return newTag;
   }
 
-
-
    public void outputTxtFile() throws IOException {
     BufferedWriter writer = new BufferedWriter(new FileWriter(percentageOfCorruptFeedback+"corruptTrainedModel.conll"));
 
     int i = 1;
     ArrayList<String> tags;
-    for(TaggedSentence sentence  : annotatedSentences.getSentences()) {
+    for(TaggedSentence sentence  : corroboratedSentences.getSentences()) {
       i = 1;
       tags = sentence.getTags();
       for(String word : sentence.getWords()) {
-        writer.write(i + "\t" + word + "\t" + "_" + "\t" + "_" + "\t" + tags.get(i-1) + "\n");
+        writer.write(i + "\t" + word + "\t" + "_" + "\t" + "_" + "\t" + tags.get(i-1) + "\t" + "+\n");
         i++;
       }
+      if (i == 1) continue;
       writer.write("\n");
     }
       writer.flush();
@@ -151,30 +172,24 @@ class nlp {
 
    void upvoteSimulation() {
     Set<UUID> keys = annotatedSentences.getKeys();
-    int i = 0;
-
     for (UUID key : keys) {
-      if (i > 10) break;
       upvote(key);
-      i++;
     }
   }
 
-  synchronized void upvote(UUID id) { 
+  void upvote(UUID id) { 
     TaggedSentence sentence = annotatedSentences.getSentence(id);
     if (sentence == null) return;
 
     annotatedSentences.upvoteSentence(id);
 
-    if (sentence.getUpvotes() > 50) {
+    if (sentence.getUpvotes() > 3) {
       annotatedSentences.removeSentence(id);
       corroboratedSentences.addSentence(sentence);
     }
   }
 
    void readTxtFile(String file) throws IOException {
-    annotatedSentences = new SentencesCollection();
-    corroboratedSentences = new SentencesCollection();
 
 		BufferedReader reader = new BufferedReader (new FileReader (file));
 
@@ -239,7 +254,7 @@ class SentencesCollection {
     this.counter = new AtomicInteger();
   }
 
-  public synchronized void addSentence(TaggedSentence sentence) {
+  public void addSentence(TaggedSentence sentence) {
     sentences.put(UUID.randomUUID(), sentence);
     incrementCounter();
   }
@@ -255,7 +270,9 @@ class SentencesCollection {
   public void upvoteSentence(UUID id) {
     if (getSentence(id) == null) return;
 
-    getSentence(id).upvote();
+    try {
+      getSentence(id).upvote();
+    } catch(NullPointerException ex) {}
   }
 
   public TaggedSentence getSentence(UUID id) {

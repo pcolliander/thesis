@@ -1,12 +1,12 @@
 ;; (def annotationSymbols ["CC", "CD", "DT", "EX", "FW", "IN", "JJ", "JJR", "JJS", "LS", "MD", "NN", "NNS", "NNP", "NNPS", "PDT", "POS", "PRP", "PRP$", "RB", "RBR", "RBS", "RP", "SYM", "TO", "UH", "VB", "VBZ", "VBP", "VBD", "VBN" "VGB", "WDT", "WP", "WP$", "WRB", ".", ",", ":", "(", ")"  ] 
 
 ;; Counters
-(def sentencesCounter (agent 0))
+;; (def sentencesCounter (agent 0))
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
 
 ;; Main refs (are updated in transactions)
-(def sentences (ref {:1 {:text ""} :2 {:text ""} :3 {:text ""}}) )
+;; (def sentences (ref {:1 {:text ""} :2 {:text ""} :3 {:text ""}}) )
 (def annotatedSentences (ref {}))
 (def corroboratedSentences (ref {}))
 
@@ -14,7 +14,7 @@
 ;; Utility Functions
 ;; -----------------
 (defn pm [] 
-  (prn "sentencesCounter " @sentencesCounter)
+  ;; (prn "sentencesCounter " @sentencesCounter)
   (prn "annotatedCounter " @annotatedCounter)
   (prn "finished: " @finishedCounter)
   (prn "sentences: " @sentences)
@@ -55,12 +55,12 @@
 ;; -------------
 ;; Add sentences
 ;; -------------
-(defn addSentence [text]
-  (dosync 
-    (alter sentences conj {(keyword (id-gen)) {:text text}})
-    (send sentencesCounter inc)
-  )
-)
+;; (defn addSentence [text]
+;;   (dosync 
+;;     (alter sentences conj {(keyword (id-gen)) {:text text}})
+;;     (send sentencesCounter inc)
+;;   )
+;; )
 
 ;; ----------------------
 ;; Add annotatedSentences
@@ -75,18 +75,18 @@
 ;; --------------------------------------------------------------------------------------------------
 ;; Edit sentences (adds a counter to an individual map, and moves from sentences to annotatedCounter)
 ;; --------------------------------------------------------------------------------------------------
-(defn edit [id text]
-  (dosync
-    (if (contains? @sentences (keyword (str id)))
-      (do
-        (alter annotatedSentences conj {(keyword (str id)) {:counter 0, :text text }})
-        (alter sentences dissoc sentences (keyword (str id)))
-        (send sentencesCounter dec) ;; will only be sent once transaction is commited
-        (send annotatedCounter inc) ;; will only be sent once transaction is commited
-      )
-    )
-  )
-)
+;; (defn edit [id text]
+;;   (dosync
+;;     (if (contains? @sentences (keyword (str id)))
+;;       (do
+;;         (alter annotatedSentences conj {(keyword (str id)) {:counter 0, :text text }})
+;;         (alter sentences dissoc sentences (keyword (str id)))
+;;         (send sentencesCounter dec) ;; will only be sent once transaction is commited
+;;         (send annotatedCounter inc) ;; will only be sent once transaction is commited
+;;       )
+;;     )
+;;   )
+;; )
 
 ;; -----------------
 ;; Get functions (sentences in different states)
