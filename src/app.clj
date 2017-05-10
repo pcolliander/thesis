@@ -1,19 +1,18 @@
 (def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
 
-(ns myns
-    (:import 
-      (java.util UUID)
-      (marmot.morph.cmd Trainer)
-      (marmot.morph.cmd Annotator)
-    )
+(import 
+  (java.util UUID)
+  (marmot.morph.cmd Trainer)
+  (marmot.morph.cmd Annotator)
 )
 
-;; (def sentencesCounter (agent 0))
+(require '[clojure.string :as str])
+(use 'clojure.java.io)
+
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
 
 ;; Main refs (are updated in transactions)
-;; (def sentences (ref {:1 {:text ""} :2 {:text ""} :3 {:text ""}}) )
 (def annotatedSentences (ref {}))
 (def corroboratedSentences (ref {}))
 
@@ -25,8 +24,8 @@
   (prn "annotatedCounter " @annotatedCounter)
   (prn "finished: " @finishedCounter)
   ;; (prn "sentences: " @sentences)
-  (prn "annotatedSentences " @annotatedSentences)
-  (prn "corroboratedSentences: " @corroboratedSentences)
+  ;; (prn "annotatedSentences " @annotatedSentences)
+  ;; (prn "corroboratedSentences: " @corroboratedSentences)
 )
 
 ;; ------
@@ -34,19 +33,19 @@
 ;; ------
 (defn upvote [id] 
   (dosync
-    (if (contains? @annotatedSentences (keyword (str id)))
-      (alter annotatedSentences update-in [(keyword (str id)) :counter] inc)
+    (if (contains? @annotatedSentences id)
+      (alter annotatedSentences update-in [id :counter] inc)
       "false"
     )
   )
   
   (dosync 
-    (if (contains? @annotatedSentences (keyword (str id)))
+    (if (contains? @annotatedSentences id)
       (do
-        (if (> (get-in @annotatedSentences [(keyword (str id)) :counter]) 3)
+        (if (> (get-in @annotatedSentences [id :counter]) 3)
           (do 
-            (alter corroboratedSentences conj {(keyword (str id)) (get @annotatedSentences (keyword (str id)))})
-            (alter annotatedSentences dissoc annotatedSentences (keyword (str id)))
+            (alter corroboratedSentences conj {id (get @annotatedSentences id)})
+            (alter annotatedSentences dissoc annotatedSentences id)
             (send annotatedCounter dec)
             (send finishedCounter inc))
         ;; else? "counter not big enough"
@@ -56,41 +55,16 @@
     )
   )
 )
-;; -------------
-;; Add sentences
-;; -------------
-;; (defn addSentence [text]
-;;   (dosync 
-;;     (alter sentences conj {(keyword (id-gen)) {:text text}})
-;;     (send sentencesCounter inc)
-;;   )
-;; )
 
 ;; ----------------------
 ;; Add annotatedSentences
 ;; ----------------------
-(defn addAnnotated [text]
+(defn addSentence [sentence]
   (dosync 
-    (alter annotatedSentences conj {(keyword (UUID/randomUUID)) {:counter 0, :text text}})
+    (alter annotatedSentences conj {(keyword (str (UUID/randomUUID))) {:counter 0, :sentence sentence}})
     (send annotatedCounter inc)
   )
 )
-
-;; --------------------------------------------------------------------------------------------------
-;; Edit sentences (adds a counter to an individual map, and moves from sentences to annotatedCounter)
-;; --------------------------------------------------------------------------------------------------
-;; (defn edit [id text]
-;;   (dosync
-;;     (if (contains? @sentences (keyword (str id)))
-;;       (do
-;;         (alter annotatedSentences conj {(keyword (str id)) {:counter 0, :text text }})
-;;         (alter sentences dissoc sentences (keyword (str id)))
-;;         (send sentencesCounter dec) ;; will only be sent once transaction is commited
-;;         (send annotatedCounter inc) ;; will only be sent once transaction is commited
-;;       )
-;;     )
-;;   )
-;; )
 
 ;; -----------------
 ;; Get functions (sentences in different states)
@@ -107,64 +81,76 @@
 ;;   (@sentences)
 ;; )
 
-(prn "hej")
-
-
 ;; -----------
 ;; TODO 
 ;; -----------
 
+;; -----------------------------------------------------------------------------------------
+;; Read in texts from annotated source (the first time the app starts I guess)
+;; -----------------------------------------------------------------------------------------
+
+(def sentence)
+(require '[clojure.string :as str])
+(defn readTxtFile []
+  (with-open [rdr (reader "src/en-ud-train.conllu")]
+    (doseq [line (line-seq rdr)]
+      ;; (addSentence line)
+
+      (while (.contains line "#") (set! sentence line))
+
+      (prn str/split line "\\t")
+
+    )
+  )
+  (prn "finished reading txt file.")
+)
+
 ;; -----------
-;; Train Model
+;; Upvote Simulation
 ;; -----------
-;; (defn trainModel []
-;;   ()
-;; )
+
+(defn upvoteSimulationTask []
+  (prn "starting upvoting.")
+
+  (while (> @annotatedCounter 0) 
+    (doseq [k (keys @annotatedSentences)] (upvote k)) ;(prn @annotatedCounter))
+  )
+)
+
+;; (ereadTxtFile)
+;; (upvoteSimulationTask)
+;; (pm) 
+
+;; (upvoteSimulation)
 
 ;; -----------
 ;; Output Textfile
 ;; -----------
-;; (defn outputTxtFile []
-;;   ()
-;; )
+(defn outputTxtFile []
+  (vals corroboratedSentences)
+  ;; (spit "clojure.txt" "Hello Clojure")
+)
+
+;; (outputTxtFile)
 
 ;; -----------
 ;; Annotate with the trained Model
 ;; -----------
 (defn trainModel []
-  (
-   (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
-  )
+  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
 )
 
 ;; ---------
 ;; Run Model
 ;; ---------
 (defn runModel []
-  ( 
-   (Annotator/main (into-array String ["-train-file","form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
-  )
+  (Annotator/main (into-array String ["--model-file", "en.marmot", "--test-file", "form-index=1,trainedModel.conll",  "--pred-file", "taggedFile" ]))
 )
-
 
 ;; ----
 ;; Main
 ;; ----
 
-;; -----------------------------------------------------------------------------------------
-;; Read in texts from annotated source (the first time the app starts I guess)
-;; -----------------------------------------------------------------------------------------
-
-;; (require '[clojure.string :as str])
-;;
-;; (use 'clojure.java.io)
-;; (with-open [rdr (reader "lib/UD_English/en-ud-dev.conllu")]
-;;   (doseq [line (line-seq rdr)]
-;;     (prn line)
-;;     ;; (str/split line #" ")
-;;     ;; (addText line))
-;;     )
-;; )
 
 ;; (dotimes [i 10] (.start (Thread. (fn [] (upvote i)))))
 ;; (dotimes [i 0] (upvote 1))
