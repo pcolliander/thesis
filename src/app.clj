@@ -1,16 +1,14 @@
-;; (def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
+(def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
 
 (ns myns
-    (:import (java.util UUID)))
-
-
-
-(import [marmot.morph.cmd Trainer])
-(import (marmot.morph.cmd Annotator))
-
+    (:import 
+      (java.util UUID)
+      (marmot.morph.cmd Trainer)
+      (marmot.morph.cmd Annotator)
+    )
+)
 
 ;; (def sentencesCounter (agent 0))
-
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
 

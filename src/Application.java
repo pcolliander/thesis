@@ -9,16 +9,9 @@ import java.util.UUID;
 import marmot.morph.cmd.Trainer;
 import marmot.morph.cmd.Annotator;;
 
-
 class Application {
-
   public static void main(String[] args) throws IOException {
-
-    // Creates a thread pool that creates new threads as needed, but will reuse previously constructed threads when they are available.
     Executor executor = Executors.newFixedThreadPool(50);
-
-    // int numberOfUsers =;
-
     nlp app = new nlp(50, executor);
     app.simulation(args[0]);
   }
