@@ -1,5 +1,6 @@
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.*;
+import java.util.concurrent.Future;
 import java.util.*;
 import java.io.*;
 
@@ -120,12 +121,12 @@ class nlp {
     // }
   }
 
-  void corruptTags(int percentage) {
+  public void corruptTags() {
     HashSet<Integer> rand_nums;
 
     for(TaggedSentence sentence : annotatedSentences.getSentences()) {
       rand_nums = new HashSet<>();
-      int X = (percentage * sentence.getWordCount()) / 100;
+      int X = ( percentageOfCorruptFeedback * sentence.getWordCount()) / 100;
       for(int i = 0; i < sentence.getSize(); i++) {
         rand_nums.add(i);
       }
