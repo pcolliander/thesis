@@ -1,18 +1,22 @@
-(def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
-
 (import 
   (java.util UUID)
+  (java.util.concurrent Executors)
   (marmot.morph.cmd Trainer)
   (marmot.morph.cmd Annotator)
+
 )
 
-(require '[clojure.string :as str])
+
 (use 'clojure.java.io)
+(require '[clojure.string :as str])
+
+
+
+(def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
 
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
 
-;; Main refs (are updated in transactions)
 (def annotatedSentences (ref {}))
 (def corroboratedSentences (ref {}))
 
@@ -20,10 +24,8 @@
 ;; Utility Functions
 ;; -----------------
 (defn pm [] 
-  ;; (prn "sentencesCounter " @sentencesCounter)
   (prn "annotatedCounter " @annotatedCounter)
-  (prn "finished: " @finishedCounter)
-  ;; (prn "sentences: " @sentences)
+  (prn "corrboratedCounter " @finishedCounter)
   ;; (prn "annotatedSentences " @annotatedSentences)
   ;; (prn "corroboratedSentences: " @corroboratedSentences)
 )
@@ -59,9 +61,9 @@
 ;; ----------------------
 ;; Add annotatedSentences
 ;; ----------------------
-(defn addSentence [sentence]
+(defn addSentence [sentence words tags]
   (dosync 
-    (alter annotatedSentences conj {(keyword (str (UUID/randomUUID))) {:counter 0, :sentence sentence}})
+    (alter annotatedSentences conj {(keyword (str (UUID/randomUUID))) {:counter 0, :sentence sentence :words words :tags tags}})
     (send annotatedCounter inc)
   )
 )
@@ -89,20 +91,33 @@
 ;; Read in texts from annotated source (the first time the app starts I guess)
 ;; -----------------------------------------------------------------------------------------
 
-(def sentence)
+(def sentence "")
+(def words [])
+(def tags [])
 (require '[clojure.string :as str])
 (defn readTxtFile []
-  (with-open [rdr (reader "src/en-ud-train.conllu")]
+  (with-open [rdr (reader "en-ud-train.conllu")]
     (doseq [line (line-seq rdr)]
-      ;; (addSentence line)
+      (if (.contains line "#") (def sentence line))
 
-      (while (.contains line "#") (set! sentence line))
+      (if (str/blank? line) (do 
+        (addSentence sentence words tags)
+        (def words []) (def tags [])
+        )
+      )
 
-      (prn str/split line "\\t")
-
+      (if (not (str/blank? line)) 
+        (if (not (.contains line "#") )
+          (do 
+            (def sent (str/split line #"\t"))
+            (def words (conj words (sent 1)))
+            (def tags (conj tags (sent 4)))
+          )
+        )
+      )
     )
+    (prn "finished reading txt file.")
   )
-  (prn "finished reading txt file.")
 )
 
 ;; -----------
@@ -110,51 +125,87 @@
 ;; -----------
 
 (defn upvoteSimulationTask []
-  (prn "starting upvoting.")
+  ;; (prn "starting upvoting.")
 
-  (while (> @annotatedCounter 0) 
-    (doseq [k (keys @annotatedSentences)] (upvote k)) ;(prn @annotatedCounter))
-  )
+  ;; (while (> @annotatedCounter 0) 
+    (doseq [k (keys @annotatedSentences)] (upvote k))
+  ;; )
 )
-
-;; (ereadTxtFile)
-;; (upvoteSimulationTask)
-;; (pm) 
-
-;; (upvoteSimulation)
 
 ;; -----------
 ;; Output Textfile
 ;; -----------
 (defn outputTxtFile []
-  (vals corroboratedSentences)
-  ;; (spit "clojure.txt" "Hello Clojure")
+  (doseq [[key val] @corroboratedSentences] 
+    (println) 
+    (println) 
+    
+    (def i 0)
+    (doseq [x (map vector (get val :words) (get val :tags))] 
+      (spit "trainedModel7.conll" (str i \tab (nth x 0) \tab (nth x 1) \newline) :append true)
+      (def i (+ i 1))
+    )
+    (spit "trainedModel7.conll" \newline :append true)
+  )
 )
-
-;; (outputTxtFile)
-
 ;; -----------
 ;; Annotate with the trained Model
 ;; -----------
 (defn trainModel []
-  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=4,en-ud-train.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
+  (prn "training model")
+  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel7.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
+  (prn "model trained")
 )
 
+;; (trainModel)
 ;; ---------
 ;; Run Model
 ;; ---------
 (defn runModel []
-  (Annotator/main (into-array String ["--model-file", "en.marmot", "--test-file", "form-index=1,trainedModel.conll",  "--pred-file", "taggedFile" ]))
+  (prn "running model")
+  (Annotator/main (into-array String ["--model-file", "fromClojure.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggedFile" ]))
+  (prn "model run")
 )
 
-;; ----
-;; Main
-;; ----
+(defn upvoteSimulationMultipleUsers [nthreads]
+  (def pool (Executors/newFixedThreadPool nthreads))
 
+  (while (> @annotatedCounter 0) 
+    (.execute pool upvoteSimulationTask) )
+  (print pool)
+  (.shutdown pool)
+  (pm)
+)
 
-;; (dotimes [i 10] (.start (Thread. (fn [] (upvote i)))))
-;; (dotimes [i 0] (upvote 1))
-;; (await a)
+(defn runProgram [] 
+  (println)
+  (prn "a = do all")
+  (prn "r = read input and map to dict")
+  (prn "u = upvote simulation task")
+  (prn "o = output txt file.")
+  (prn "train  = train model.")
+  (prn "run  = run model.")
 
+  (let [input (read-line)]
+    (case input
+      "a" (do 
+            (readTxtFile)
+            (upvoteSimulationMultipleUsers 50)
+            (outputTxtFile)
+            (trainModel)
+            (runModel)
+            (runProgram)
+          )
 
+      "r" ((readTxtFile) (runProgram))
+      "u" ((upvoteSimulationMultipleUsers 50) (runProgram))
+      "o" ((outputTxtFile) (runProgram))
+      "train" ((trainModel) (runProgram))
+      "run" ((runModel) (runProgram))
+      "default"
+    )
+  )
+)
+           
+(runProgram)
 
