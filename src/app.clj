@@ -111,7 +111,7 @@
           (do 
             (def sent (str/split line #"\t"))
             (def words (conj words (sent 1)))
-            (def tags (conj tags (sent 4)))
+            (def tags (conj tags (sent 3)))
           )
         )
       )
@@ -136,16 +136,17 @@
 ;; Output Textfile
 ;; -----------
 (defn outputTxtFile []
+  (spit "trainedModel.conll" "")
   (doseq [[key val] @corroboratedSentences] 
     (println) 
     (println) 
     
     (def i 0)
     (doseq [x (map vector (get val :words) (get val :tags))] 
-      (spit "trainedModel7.conll" (str i \tab (nth x 0) \tab (nth x 1) \newline) :append true)
+      (spit "trainedModel.conll" (str i \tab (nth x 0) \tab (nth x 1) \newline) :append true)
       (def i (+ i 1))
     )
-    (spit "trainedModel7.conll" \newline :append true)
+    (spit "trainedModel.conll" \newline :append true)
   )
 )
 ;; -----------
@@ -153,7 +154,7 @@
 ;; -----------
 (defn trainModel []
   (prn "training model")
-  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel7.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
+  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
   (prn "model trained")
 )
 
