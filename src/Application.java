@@ -11,9 +11,59 @@ import marmot.morph.cmd.Annotator;;
 
 class Application {
   public static void main(String[] args) throws IOException {
-    Executor executor = Executors.newFixedThreadPool(50);
-    nlp app = new nlp(50, executor);
-    app.simulation(args[0]);
+    int corruptFeedbackPercentage = 50;
+    int nthreads = 50;
+    nlp app = new nlp(corruptFeedbackPercentage);
+
+    long startTime;
+    long endTime;
+    while (true) {
+      System.out.println();
+      System.out.println("a = do all");
+      System.out.println("r = read input and map to dict");
+      System.out.println("u = upvote simulation task");
+      System.out.println("o = output txt file.");
+      System.out.println("train = train model.");
+      System.out.println("run = run model.");
+      Scanner reader = new Scanner(System.in);  // Reading from System.in
+      System.out.print("Enter a command: ");
+      String n = reader.nextLine(); // Scans the next token of the input as an int.
+
+      switch (n) {
+        case "a" : app.fullSimulation(args[0], nthreads);
+               break;
+        case "r": app.readTxtFile(args[0]);
+               break;
+        case "u": 
+          startTime = System.currentTimeMillis();
+          app.upvoteSimulationMultipleUsers(nthreads);
+          endTime = System.currentTimeMillis();
+          System.out.println("Total execution time: " + (endTime - startTime) );
+          app.printme();
+               break;
+        case "o": app.outputTxtFile();
+               break;
+        case "train": 
+          startTime = System.currentTimeMillis();
+
+          app.trainModel();
+
+          endTime = System.currentTimeMillis();
+          System.out.println("Total execution time: " + (endTime - startTime) );
+          break;
+        case "run": 
+          startTime = System.currentTimeMillis();
+
+          app.runModel();
+
+          endTime = System.currentTimeMillis();
+          System.out.println("Total execution time: " + (endTime - startTime) );
+          break;
+        case "u-train":
+          System.out.println("upvoting and training at the same time");
+          break;
+      }
+    }
   }
 }
 
@@ -23,14 +73,13 @@ class nlp {
   SentencesCollection corroboratedSentences;
 
   int percentageOfCorruptFeedback = 0;
-  Executor executor;
 
   boolean tagsetWritten = false;
   boolean hasEnoughCorroboratedSentences = false;
   boolean modelTrained = false;
 
   final Runnable upvoteSimulationTask = new Runnable() {
-    public void run() { upvoteSimulation(); hasEnoughCorroboratedSentences = true;}
+    public void run() { upvoteSimulation(); }
   };
 
   // final Callable<Boolean> trainingModelSimulationTask = new Callable<Boolean>() {
@@ -45,31 +94,36 @@ class nlp {
   };
 
 
-  public nlp(int percentageppercentageOfCorruptFeedback, Executor e) {
+  public nlp(int percentageppercentageOfCorruptFeedback) {
     this.percentageOfCorruptFeedback = percentageppercentageOfCorruptFeedback;
-    executor = e;
     annotatedSentences = new SentencesCollection();
     corroboratedSentences = new SentencesCollection();
   }
 
-  synchronized public void simulation(String file) throws IOException {
+  public void upvoteSimulationMultipleUsers(int nthreads) {
+    Executor executor = Executors.newFixedThreadPool(nthreads);
+    while (annotatedSentences.size() > 0) {
+     executor.execute(upvoteSimulationTask);
+    }
+    System.out.println("finished upvoting");
+  }
 
+  public void trainModel() {
+    Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
+  }
+
+  public void runModel() {
+    Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); 
+  }
+  
+  public void fullSimulation(String file, int nthreads) throws IOException {
+
+    Executor executor = Executors.newFixedThreadPool(nthreads);
     readTxtFile(file);
-    // printme();
 
     while (annotatedSentences.size() > 0) {
      executor.execute(upvoteSimulationTask);
-     // System.out.println("annotated size: " + annotatedSentences.size());
-     // if (corroboratedSentences.size() > 1) {
-       // System.out.println("corroborated size: " + corroboratedSentences.size());
-     // }
     }
-
-    // System.out.println("after");
-    // System.out.println("e" + executor);
-    // concurrencySimulation();
-    // System.out.println("concurrenySimulation finished");
-    // corruptTags(50);
 
     while (!hasEnoughCorroboratedSentences) {
       try {
@@ -77,8 +131,8 @@ class nlp {
       } catch (InterruptedException e) {}
     }
 
+    System.out.println("done");
 
-    System.out.println("writing text file.");
     outputTxtFile();
 
     while (!tagsetWritten) {
@@ -87,13 +141,6 @@ class nlp {
       } catch (InterruptedException e) {}
     }
 
-    System.out.println(executor);
-
-    System.out.println("trainingModelSimulation started");
-
-    System.out.println(executor);
-
-    // (if task) the variable is set in another thread, need to return the value from it "Callable."
     Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
     modelTrained = true;
 
@@ -105,13 +152,6 @@ class nlp {
     // executor.execute(annotatingModelSimulationTask);
     System.out.println("annotatingModelSimlation started");
     Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); 
-  }
-
-  public void concurrencySimulation() {
-    System.out.println("e" + executor);
-    // for (int i=0; i < 1; i++) {
-      // executor.execute(trainingModelSimulationTask);
-    // }
   }
 
   public void corruptTags() {
@@ -164,27 +204,36 @@ class nlp {
       tagsetWritten = true;
   }
 
-   void upvoteSimulation() {
+  void upvoteSimulation() {
     Set<UUID> keys = annotatedSentences.getKeys();
+    int i = 0;
+    // String string = annotatedSentences.toString();
+    // string = null;
     for (UUID key : keys) {
-      upvote(key);
+      if (i < 10) {
+        // synchronized(this) {
+          upvote(key);
+        // }
+        i++;
+      }
     }
   }
 
-  void upvote(UUID id) { 
+  synchronized void upvote(UUID id) { 
     TaggedSentence sentence = annotatedSentences.getSentence(id);
     if (sentence == null) return;
 
     annotatedSentences.upvoteSentence(id);
 
-    if (sentence.getUpvotes() > 3) {
+    if (sentence.getUpvotes() > 5) {
       annotatedSentences.removeSentence(id);
       corroboratedSentences.addSentence(sentence);
     }
   }
 
    void readTxtFile(String file) throws IOException {
-
+     System.out.println("reading text file");
+        
 		BufferedReader reader = new BufferedReader (new FileReader (file));
 
 		String str;
@@ -209,6 +258,7 @@ class nlp {
         break;
       }
     }
+    System.out.println("finished reading file");
   }
 
   void memoryUsage(String cause) {
@@ -226,11 +276,11 @@ class nlp {
     System.out.println();
     System.out.println("annotatedSentencesCounter: " + annotatedSentences.getCounterValue());
     System.out.println("corroboratedSentencesCounter: " + corroboratedSentences.getCounterValue());
-    System.out.println("annotatedSentences: ");
-    annotatedSentences.print();
-
-    System.out.println("corroboratedSentences: " + corroboratedSentences.getCounterValue());
-    corroboratedSentences.print();
+    // System.out.println("annotatedSentences: ");
+    // annotatedSentences.print();
+    //
+    // System.out.println("corroboratedSentences: " + corroboratedSentences.getCounterValue());
+    // corroboratedSentences.print();
   }
 
   long bytesToMegabytes(long bytes) {
@@ -263,10 +313,7 @@ class SentencesCollection {
 
   public void upvoteSentence(UUID id) {
     if (getSentence(id) == null) return;
-
-    try {
-      getSentence(id).upvote();
-    } catch(NullPointerException ex) {}
+    getSentence(id).upvote();
   }
 
   public TaggedSentence getSentence(UUID id) {

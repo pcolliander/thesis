@@ -3,16 +3,10 @@
   (java.util.concurrent Executors)
   (marmot.morph.cmd Trainer)
   (marmot.morph.cmd Annotator)
-
 )
-
 
 (use 'clojure.java.io)
 (require '[clojure.string :as str])
-
-
-
-(def annotationSymbols [ "ADJ", "ADP", "ADV", "AUX", "CONJ","DET", "NOUN", "NUM", "PART", "PRON", "PROPN", "PUNCT", "SCONJ", "VERB", "X" ])
 
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
@@ -20,6 +14,7 @@
 (def annotatedSentences (ref {}))
 (def corroboratedSentences (ref {}))
 
+(def retryCounter (atom 0))
 ;; -----------------
 ;; Utility Functions
 ;; -----------------
@@ -37,23 +32,21 @@
   (dosync
     (if (contains? @annotatedSentences id)
       (alter annotatedSentences update-in [id :counter] inc)
-      "false"
     )
   )
   
   (dosync 
     (if (contains? @annotatedSentences id)
       (do
-        (if (> (get-in @annotatedSentences [id :counter]) 3)
+        (if (> (get-in @annotatedSentences [id :counter]) 5)
           (do 
+            (swap! retryCounter inc)
             (alter corroboratedSentences conj {id (get @annotatedSentences id)})
             (alter annotatedSentences dissoc annotatedSentences id)
             (send annotatedCounter dec)
             (send finishedCounter inc))
-        ;; else? "counter not big enough"
         )
       )
-      ;; else? "false 2"
     )
   )
 )
@@ -83,12 +76,8 @@
 ;;   (@sentences)
 ;; )
 
-;; -----------
-;; TODO 
-;; -----------
-
 ;; -----------------------------------------------------------------------------------------
-;; Read in texts from annotated source (the first time the app starts I guess)
+;; Read in texts from annotated source
 ;; -----------------------------------------------------------------------------------------
 
 (def sentence "")
@@ -100,9 +89,10 @@
     (doseq [line (line-seq rdr)]
       (if (.contains line "#") (def sentence line))
 
-      (if (str/blank? line) (do 
-        (addSentence sentence words tags)
-        (def words []) (def tags [])
+      (if (str/blank? line) 
+        (do 
+          (addSentence sentence words tags)
+          (def words []) (def tags [])
         )
       )
 
@@ -124,12 +114,21 @@
 ;; Upvote Simulation
 ;; -----------
 
-(defn upvoteSimulationTask []
-  ;; (prn "starting upvoting.")
+;; read from file
+;; upvote 10
 
-  ;; (while (> @annotatedCounter 0) 
-    (doseq [k (keys @annotatedSentences)] (upvote k))
-  ;; )
+(defn serialize [m sep] (apply str (concat (interpose sep (vals m)) ["\n"])))
+
+(defn upvoteSimulationTask []
+  (def i 0)
+  (doseq [k (keys @annotatedSentences)] 
+    (if (< i 10) 
+      (do
+        (upvote k)
+        (def i (+ i 1))
+      )
+    )
+  )
 )
 
 ;; -----------
@@ -154,7 +153,7 @@
 ;; -----------
 (defn trainModel []
   (prn "training model")
-  (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"]))
+  (time (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"])))
   (prn "model trained")
 )
 
@@ -164,15 +163,15 @@
 ;; ---------
 (defn runModel []
   (prn "running model")
-  (Annotator/main (into-array String ["--model-file", "fromClojure.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggedFile" ]))
+  (time (Annotator/main (into-array String ["--model-file", "fromClojure.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggedFile" ])))
   (prn "model run")
 )
 
 (defn upvoteSimulationMultipleUsers [nthreads]
   (def pool (Executors/newFixedThreadPool nthreads))
 
-  (while (> @annotatedCounter 0) 
-    (.execute pool upvoteSimulationTask) )
+  (time (while (> @annotatedCounter 0) 
+    (.execute pool upvoteSimulationTask) ))
   (print pool)
   (.shutdown pool)
   (pm)
@@ -199,7 +198,7 @@
           )
 
       "r" ((readTxtFile) (runProgram))
-      "u" ((upvoteSimulationMultipleUsers 50) (runProgram))
+      "u" (time ((upvoteSimulationMultipleUsers 50) (prn retryCounter) (runProgram)))
       "o" ((outputTxtFile) (runProgram))
       "train" ((trainModel) (runProgram))
       "run" ((runModel) (runProgram))
