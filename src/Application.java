@@ -11,18 +11,19 @@ import marmot.morph.cmd.Annotator;;
 
 class Application {
   public static void main(String[] args) throws IOException {
-    int corruptFeedbackPercentage = 50;
     int nthreads = 50;
-    nlp app = new nlp(corruptFeedbackPercentage);
+    nlp app = new nlp();
 
     long startTime;
     long endTime;
     while (true) {
       System.out.println();
       System.out.println("a = do all");
+
+      System.out.println("nlp = run correption of tags and compare results");
+      System.out.println("o = output txt file.");
       System.out.println("r = read input and map to dict");
       System.out.println("u = upvote simulation task");
-      System.out.println("o = output txt file.");
       System.out.println("train = train model.");
       System.out.println("run = run model.");
       Scanner reader = new Scanner(System.in);  // Reading from System.in
@@ -30,7 +31,7 @@ class Application {
       String n = reader.nextLine(); // Scans the next token of the input as an int.
 
       switch (n) {
-        case "a" : app.fullSimulation(args[0], nthreads);
+        case "a" : app.fullSimulation(args[0], nthreads, 0);
                break;
         case "r": app.readTxtFile(args[0]);
                break;
@@ -41,12 +42,12 @@ class Application {
           System.out.println("Total execution time: " + (endTime - startTime) );
           app.printme();
                break;
-        case "o": app.outputTxtFile();
+        case "o": app.outputTxtFile(0);
                break;
         case "train": 
           startTime = System.currentTimeMillis();
 
-          app.trainModel();
+          app.trainModel(0);
 
           endTime = System.currentTimeMillis();
           System.out.println("Total execution time: " + (endTime - startTime) );
@@ -54,13 +55,26 @@ class Application {
         case "run": 
           startTime = System.currentTimeMillis();
 
-          app.runModel();
+          app.runModel(0);
 
           endTime = System.currentTimeMillis();
           System.out.println("Total execution time: " + (endTime - startTime) );
           break;
-        case "u-train":
-          System.out.println("upvoting and training at the same time");
+        case "nlp":
+          System.out.println("reading, corrupting tags, training model and tagging. (Also check accuracy?) ");
+
+          int corruptFeedback = 0;
+
+          // for (int i = 0; i <= 10; i++) {
+          //   corruptFeedback = i;
+          //   app.corruptAndOutputModel(args[0], corruptFeedback);
+          // }
+
+          for (int i = 20; i <= 100; i += 10) {
+            corruptFeedback = i;
+            app.corruptAndOutputModel(args[0], corruptFeedback);
+          }
+          System.out.println("done");
           break;
       }
     }
@@ -72,8 +86,6 @@ class nlp {
   SentencesCollection annotatedSentences;
   SentencesCollection corroboratedSentences;
 
-  int percentageOfCorruptFeedback = 0;
-
   boolean tagsetWritten = false;
   boolean hasEnoughCorroboratedSentences = false;
   boolean modelTrained = false;
@@ -82,22 +94,68 @@ class nlp {
     public void run() { upvoteSimulation(); }
   };
 
-  // final Callable<Boolean> trainingModelSimulationTask = new Callable<Boolean>() {
-  //   public Boolean call() { 
-  //     Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
-  //     return true;
-  //   }
+  // final Runnable annotatingModelSimulationTask = new Runnable() {
+  //   public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+corruptFeedback+"corruptTrainedModel.conll",  "--pred-file", corruptFeedback + "corruptTaggedFile" }); }
   // };
 
-  final Runnable annotatingModelSimulationTask = new Runnable() {
-    public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); }
-  };
-
-
-  public nlp(int percentageppercentageOfCorruptFeedback) {
-    this.percentageOfCorruptFeedback = percentageppercentageOfCorruptFeedback;
+  public nlp() {
     annotatedSentences = new SentencesCollection();
     corroboratedSentences = new SentencesCollection();
+  }
+
+  public void corruptAndOutputModel(String file, int corruptFeedback) throws IOException {
+
+    System.out.println("percentage of corruptFeedback " + corruptFeedback);
+
+    readTxtFile(file);
+    System.out.println("file read");
+    corruptTagsNaive(corruptFeedback);
+    System.out.println("tags corrupted");
+    outputTxtFile(corruptFeedback);
+    System.out.println("txtFile output");
+    trainModel(corruptFeedback);
+    System.out.println("model trained");
+    runModel(corruptFeedback);
+    System.out.println("model run");
+    
+    compareAccuracyAndStoreResult(corruptFeedback);
+  }
+
+  public void compareAccuracyAndStoreResult(int corruptFeedback) throws IOException {
+
+		BufferedReader readerOriginalTestFile = new BufferedReader (new FileReader ("./en-ud-test.conll"));
+		BufferedReader readerCorruptTaggedFile = new BufferedReader (new FileReader ("./taggedFiles/"+corruptFeedback+"corruptTaggedFile"));
+
+    int counter = 0;
+
+    String answerStr, corruptStr;
+
+		while((answerStr = readerOriginalTestFile.readLine() ) != null ) {
+
+      if (answerStr.length() == 0) {
+        corruptStr = readerCorruptTaggedFile.readLine();
+        continue;
+      }
+
+      corruptStr = readerCorruptTaggedFile.readLine();
+
+      String[] correct = answerStr.split("\\t");
+      String[] corrupt = corruptStr.split("\\t");
+
+      // System.out.println("correct: " + Arrays.toString(correct));
+      // System.out.println("corrupt: " + Arrays.toString(corrupt));
+
+      if (!correct[4].equals(corrupt[5])) {
+        // System.out.println(correct[4]+  " did not equal " + corrupt[5]);
+        counter++;
+      }
+    }
+
+    FileWriter fw = new FileWriter("resultsOfComparison", true);
+
+    fw.write(corruptFeedback + ": " + counter);
+    fw.write(System.getProperty( "line.separator" ));
+    fw.close();
   }
 
   public void upvoteSimulationMultipleUsers(int nthreads) {
@@ -108,15 +166,15 @@ class nlp {
     System.out.println("finished upvoting");
   }
 
-  public void trainModel() {
-    Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
+  public void trainModel(int corruptFeedback) {
+    Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+corruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "modelEnglish.marmot" });  
   }
 
-  public void runModel() {
-    Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); 
+  public void runModel(int corruptFeedback) {
+    Annotator.main(new String[] { "--model-file", "modelEnglish.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "./taggedFiles/"+corruptFeedback+"corruptTaggedFile" }); 
   }
   
-  public void fullSimulation(String file, int nthreads) throws IOException {
+  public void fullSimulation(String file, int nthreads, int corruptFeedback) throws IOException {
 
     Executor executor = Executors.newFixedThreadPool(nthreads);
     readTxtFile(file);
@@ -133,7 +191,7 @@ class nlp {
 
     System.out.println("done");
 
-    outputTxtFile();
+    outputTxtFile(corruptFeedback);
 
     while (!tagsetWritten) {
       try {
@@ -141,7 +199,7 @@ class nlp {
       } catch (InterruptedException e) {}
     }
 
-    Trainer.main(new String[] { "-train-file", "form-index=1,tag-index=4,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll", "-tag-morph",  "false", "-model-file", "en.marmot" });  
+    trainModel(corruptFeedback);
     modelTrained = true;
 
     while (!modelTrained) {
@@ -149,17 +207,16 @@ class nlp {
         wait();
       } catch (InterruptedException e) {}
     }
-    // executor.execute(annotatingModelSimulationTask);
     System.out.println("annotatingModelSimlation started");
-    Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+percentageOfCorruptFeedback+"corruptTrainedModel.conll",  "--pred-file", percentageOfCorruptFeedback + "corruptTaggedFile" }); 
+    runModel(corruptFeedback);
   }
 
-  public void corruptTags() {
+  public void corruptTagsNaive(int corruptFeedback) {
     HashSet<Integer> rand_nums;
 
     for(TaggedSentence sentence : annotatedSentences.getSentences()) {
       rand_nums = new HashSet<>();
-      int X = ( percentageOfCorruptFeedback * sentence.getWordCount()) / 100;
+      int X = ( corruptFeedback * sentence.getWordCount()) / 100;
       for(int i = 0; i < sentence.getSize(); i++) {
         rand_nums.add(i);
       }
@@ -167,13 +224,30 @@ class nlp {
       int currentIndex = 0;
       for (int index : rand_nums) {
         if (currentIndex == X) break;
-        sentence.corruptTag(index, getDifferentTag(sentence.getTag(index)));
+        sentence.corruptTag(index, getDifferentTagNaive(sentence.getTag(index)));
           currentIndex++;
       }
     }
   }
 
-   String getDifferentTag(String tag) {
+  // public void corruptTagsClever(int corruptFeedback) {
+  //   for(TaggedSentence sentence : annotatedSentences.getSentences()) {
+  //     rand_nums = new HashSet<>();
+  //     int X = ( corruptFeedback * sentence.getWordCount()) / 100;
+  //     for(int i = 0; i < sentence.getSize(); i++) {
+  //       rand_nums.add(i);
+  //     }
+  //
+  //     int currentIndex = 0;
+  //     for (int index : rand_nums) {
+  //       if (currentIndex == X) break;
+  //       sentence.corruptTag(index, getDifferentTagNaive(sentence.getTag(index)));
+  //         currentIndex++;
+  //     }
+  //   }
+  // }
+
+   String getDifferentTagNaive(String tag) {
     int randomNum = ThreadLocalRandom.current().nextInt(0, allTags.length);
     String newTag = allTags[randomNum];
 
@@ -184,13 +258,43 @@ class nlp {
 
     return newTag;
   }
+  //
+  // String getDifferentTagClever(String tag) {
+  //
+  //   switch (tag)
+  //
+  //   case "ADJ" : return "NUM"
+  //     break;
+  //
+  //   case "ADV" : return "ADJ"
+  //     break;
+  //
+  //   case "AUX" : return
+  //     break;
+  //
+  //   case "NOUN" : return "X"
+  //     break;
+  //
+  //   case "NUM" : return "ADJ"
+  //     break;
+  //
+  //   case "PROPN" : return
+  //     break;
+  //
+  //   case "VERB" : return "ADJ"
+  //     break;
+  //
+  //   default: return tag;
+  // }
 
-   public void outputTxtFile() throws IOException {
-    BufferedWriter writer = new BufferedWriter(new FileWriter(percentageOfCorruptFeedback+"corruptTrainedModel.conll"));
+
+
+   public void outputTxtFile(int corruptFeedback) throws IOException {
+    BufferedWriter writer = new BufferedWriter(new FileWriter(corruptFeedback+"corruptTrainedModel.conll"));
 
     int i = 1;
     ArrayList<String> tags;
-    for(TaggedSentence sentence  : corroboratedSentences.getSentences()) {
+    for(TaggedSentence sentence  : annotatedSentences.getSentences()) {
       i = 1;
       tags = sentence.getTags();
       for(String word : sentence.getWords()) {
@@ -207,13 +311,9 @@ class nlp {
   void upvoteSimulation() {
     Set<UUID> keys = annotatedSentences.getKeys();
     int i = 0;
-    // String string = annotatedSentences.toString();
-    // string = null;
     for (UUID key : keys) {
       if (i < 10) {
-        // synchronized(this) {
           upvote(key);
-        // }
         i++;
       }
     }
@@ -232,8 +332,6 @@ class nlp {
   }
 
    void readTxtFile(String file) throws IOException {
-     System.out.println("reading text file");
-        
 		BufferedReader reader = new BufferedReader (new FileReader (file));
 
 		String str;
@@ -258,7 +356,6 @@ class nlp {
         break;
       }
     }
-    System.out.println("finished reading file");
   }
 
   void memoryUsage(String cause) {
