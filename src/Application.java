@@ -11,7 +11,7 @@ import marmot.morph.cmd.Annotator;;
 
 class Application {
   public static void main(String[] args) throws IOException {
-    int nthreads = 50;
+    int nthreads = 5;
     nlp app = new nlp();
 
     long startTime;
@@ -26,56 +26,55 @@ class Application {
       System.out.println("u = upvote simulation task");
       System.out.println("train = train model.");
       System.out.println("run = run model.");
-      Scanner reader = new Scanner(System.in);  // Reading from System.in
+      Scanner reader = new Scanner(System.in);
       System.out.print("Enter a command: ");
-      String n = reader.nextLine(); // Scans the next token of the input as an int.
+      String n = reader.nextLine();
 
       switch (n) {
         case "a" : app.fullSimulation(args[0], nthreads, 0);
-               break;
+                   break;
         case "r": app.readTxtFile(args[0]);
-               break;
+                  break;
         case "u": 
-          startTime = System.currentTimeMillis();
-          app.upvoteSimulationMultipleUsers(nthreads);
-          endTime = System.currentTimeMillis();
-          System.out.println("Total execution time: " + (endTime - startTime) );
-          app.printme();
-               break;
+                  startTime = System.currentTimeMillis();
+                  app.upvoteSimulationMultipleUsers(nthreads);
+                  endTime = System.currentTimeMillis();
+                  System.out.println("Total execution time: " + (endTime - startTime) );
+                  app.printme();
+                  break;
         case "o": app.outputTxtFile(0);
-               break;
+                  break;
         case "train": 
-          startTime = System.currentTimeMillis();
+                  startTime = System.currentTimeMillis();
 
-          app.trainModel(0);
+                  app.trainModel(0);
 
-          endTime = System.currentTimeMillis();
-          System.out.println("Total execution time: " + (endTime - startTime) );
-          break;
+                  endTime = System.currentTimeMillis();
+                  System.out.println("Total execution time: " + (endTime - startTime) );
+                  break;
         case "run": 
-          startTime = System.currentTimeMillis();
+                  startTime = System.currentTimeMillis();
 
-          app.runModel(0);
+                  app.runModel(0);
 
-          endTime = System.currentTimeMillis();
-          System.out.println("Total execution time: " + (endTime - startTime) );
-          break;
+                  endTime = System.currentTimeMillis();
+                  System.out.println("Total execution time: " + (endTime - startTime) );
+                  break;
         case "nlp":
-          System.out.println("reading, corrupting tags, training model and tagging. (Also check accuracy?) ");
+                  System.out.println("reading, corrupting tags, training model and tagging. (Also check accuracy?) ");
+                  int corruptFeedback = 0;
 
-          int corruptFeedback = 0;
+                  for (int i = 0; i <= 10; i++) {
+                    corruptFeedback = i;
+                    app.corruptAndOutputModel(args[0], corruptFeedback);
+                  }
 
-          // for (int i = 0; i <= 10; i++) {
-          //   corruptFeedback = i;
-          //   app.corruptAndOutputModel(args[0], corruptFeedback);
-          // }
-
-          for (int i = 20; i <= 100; i += 10) {
-            corruptFeedback = i;
-            app.corruptAndOutputModel(args[0], corruptFeedback);
-          }
-          System.out.println("done");
-          break;
+                  for (int i = 20; i <= 100; i += 10) {
+                    corruptFeedback = i;
+                    app.corruptAndOutputModel(args[0], corruptFeedback);
+                  }
+                  System.out.println("done");
+                  break;
       }
     }
   }
@@ -94,17 +93,12 @@ class nlp {
     public void run() { upvoteSimulation(); }
   };
 
-  // final Runnable annotatingModelSimulationTask = new Runnable() {
-  //   public void run() { Annotator.main(new String[] { "--model-file", "en.marmot", "--test-file", "form-index=1,"+corruptFeedback+"corruptTrainedModel.conll",  "--pred-file", corruptFeedback + "corruptTaggedFile" }); }
-  // };
-
   public nlp() {
     annotatedSentences = new SentencesCollection();
     corroboratedSentences = new SentencesCollection();
   }
 
   public void corruptAndOutputModel(String file, int corruptFeedback) throws IOException {
-
     System.out.println("percentage of corruptFeedback " + corruptFeedback);
 
     readTxtFile(file);
@@ -117,38 +111,27 @@ class nlp {
     System.out.println("model trained");
     runModel(corruptFeedback);
     System.out.println("model run");
-    
+
     compareAccuracyAndStoreResult(corruptFeedback);
   }
 
   public void compareAccuracyAndStoreResult(int corruptFeedback) throws IOException {
-
-		BufferedReader readerOriginalTestFile = new BufferedReader (new FileReader ("./en-ud-test.conll"));
-		BufferedReader readerCorruptTaggedFile = new BufferedReader (new FileReader ("./taggedFiles/"+corruptFeedback+"corruptTaggedFile"));
-
+    BufferedReader readerOriginalTestFile = new BufferedReader (new FileReader ("./en-ud-test.conll"));
+    BufferedReader readerCorruptTaggedFile = new BufferedReader (new FileReader ("./taggedFiles/"+corruptFeedback+"corruptTaggedFile"));
     int counter = 0;
-
     String answerStr, corruptStr;
 
-		while((answerStr = readerOriginalTestFile.readLine() ) != null ) {
-
+    while((answerStr = readerOriginalTestFile.readLine() ) != null ) {
       if (answerStr.length() == 0) {
         corruptStr = readerCorruptTaggedFile.readLine();
         continue;
       }
-
       corruptStr = readerCorruptTaggedFile.readLine();
 
       String[] correct = answerStr.split("\\t");
       String[] corrupt = corruptStr.split("\\t");
 
-      // System.out.println("correct: " + Arrays.toString(correct));
-      // System.out.println("corrupt: " + Arrays.toString(corrupt));
-
-      if (!correct[4].equals(corrupt[5])) {
-        // System.out.println(correct[4]+  " did not equal " + corrupt[5]);
-        counter++;
-      }
+      if (!correct[4].equals(corrupt[5])) counter++; 
     }
 
     FileWriter fw = new FileWriter("resultsOfComparison", true);
@@ -161,7 +144,7 @@ class nlp {
   public void upvoteSimulationMultipleUsers(int nthreads) {
     Executor executor = Executors.newFixedThreadPool(nthreads);
     while (annotatedSentences.size() > 0) {
-     executor.execute(upvoteSimulationTask);
+      executor.execute(upvoteSimulationTask);
     }
     System.out.println("finished upvoting");
   }
@@ -173,14 +156,13 @@ class nlp {
   public void runModel(int corruptFeedback) {
     Annotator.main(new String[] { "--model-file", "modelEnglish.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "./taggedFiles/"+corruptFeedback+"corruptTaggedFile" }); 
   }
-  
-  public void fullSimulation(String file, int nthreads, int corruptFeedback) throws IOException {
 
+  public void fullSimulation(String file, int nthreads, int corruptFeedback) throws IOException {
     Executor executor = Executors.newFixedThreadPool(nthreads);
     readTxtFile(file);
 
     while (annotatedSentences.size() > 0) {
-     executor.execute(upvoteSimulationTask);
+      executor.execute(upvoteSimulationTask);
     }
 
     while (!hasEnoughCorroboratedSentences) {
@@ -188,9 +170,6 @@ class nlp {
         wait();
       } catch (InterruptedException e) {}
     }
-
-    System.out.println("done");
-
     outputTxtFile(corruptFeedback);
 
     while (!tagsetWritten) {
@@ -225,7 +204,7 @@ class nlp {
       for (int index : rand_nums) {
         if (currentIndex == X) break;
         sentence.corruptTag(index, getDifferentTagNaive(sentence.getTag(index)));
-          currentIndex++;
+        currentIndex++;
       }
     }
   }
@@ -247,7 +226,7 @@ class nlp {
   //   }
   // }
 
-   String getDifferentTagNaive(String tag) {
+  String getDifferentTagNaive(String tag) {
     int randomNum = ThreadLocalRandom.current().nextInt(0, allTags.length);
     String newTag = allTags[randomNum];
 
@@ -287,9 +266,7 @@ class nlp {
   //   default: return tag;
   // }
 
-
-
-   public void outputTxtFile(int corruptFeedback) throws IOException {
+  public void outputTxtFile(int corruptFeedback) throws IOException {
     BufferedWriter writer = new BufferedWriter(new FileWriter(corruptFeedback+"corruptTrainedModel.conll"));
 
     int i = 1;
@@ -304,8 +281,8 @@ class nlp {
       if (i == 1) continue;
       writer.write("\n");
     }
-      writer.flush();
-      tagsetWritten = true;
+    writer.flush();
+    tagsetWritten = true;
   }
 
   void upvoteSimulation() {
@@ -313,7 +290,7 @@ class nlp {
     int i = 0;
     for (UUID key : keys) {
       if (i < 10) {
-          upvote(key);
+        upvote(key);
         i++;
       }
     }
@@ -324,22 +301,20 @@ class nlp {
     if (sentence == null) return;
 
     annotatedSentences.upvoteSentence(id);
-
     if (sentence.getUpvotes() > 5) {
       annotatedSentences.removeSentence(id);
       corroboratedSentences.addSentence(sentence);
     }
   }
 
-   void readTxtFile(String file) throws IOException {
-		BufferedReader reader = new BufferedReader (new FileReader (file));
-
-		String str;
+  void readTxtFile(String file) throws IOException {
+    BufferedReader reader = new BufferedReader (new FileReader (file));
+    String str;
     String sentence = "";
     ArrayList<String> words = new ArrayList<String>();
     ArrayList<String> tags = new ArrayList<String>();
 
-		while((str = reader.readLine() ) != null ) {
+    while((str = reader.readLine() ) != null ) {
       if (str.contains("#")) {
         sentence = str;
       }
@@ -368,16 +343,10 @@ class nlp {
     System.out.println("Used memory is megabytes: " + bytesToMegabytes(memory));
   }
 
-
   void printme() {
     System.out.println();
     System.out.println("annotatedSentencesCounter: " + annotatedSentences.getCounterValue());
     System.out.println("corroboratedSentencesCounter: " + corroboratedSentences.getCounterValue());
-    // System.out.println("annotatedSentences: ");
-    // annotatedSentences.print();
-    //
-    // System.out.println("corroboratedSentences: " + corroboratedSentences.getCounterValue());
-    // corroboratedSentences.print();
   }
 
   long bytesToMegabytes(long bytes) {

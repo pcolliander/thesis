@@ -5,19 +5,32 @@
   (marmot.morph.cmd Annotator)
 )
 
+(declare outputTxtFile, trainModel, upvote, upvoteSimulationMultipleUsers, upvoteSimulationTask, pm, readTxtFile, runModel)
+
 (use 'clojure.java.io)
 (require '[clojure.string :as str])
 
+
+(set! *warn-on-reflection* true)
+(def transactionsCounter (atom 0))
 (def annotatedCounter (agent 0))
 (def finishedCounter (agent 0))
+
+;; (add-watch finishedCounter nil 
+;;  (fn [key atom old-state new-state]
+;;    (if (= new-state 12543)
+;;      (do 
+;;        (outputTxtFile)
+;;        (trainModel)
+;;      )
+;;    )
+;;  )
+;; )
 
 (def annotatedSentences (ref {}))
 (def corroboratedSentences (ref {}))
 
-(def retryCounter (atom 0))
-;; -----------------
-;; Utility Functions
-;; -----------------
+
 (defn pm [] 
   (prn "annotatedCounter " @annotatedCounter)
   (prn "corrboratedCounter " @finishedCounter)
@@ -25,9 +38,6 @@
   ;; (prn "corroboratedSentences: " @corroboratedSentences)
 )
 
-;; ------
-;; Upvote
-;; ------
 (defn upvote [id] 
   (dosync
     (if (contains? @annotatedSentences id)
@@ -40,7 +50,7 @@
       (do
         (if (> (get-in @annotatedSentences [id :counter]) 5)
           (do 
-            (swap! retryCounter inc)
+            (swap! transactionsCounter inc)
             (alter corroboratedSentences conj {id (get @annotatedSentences id)})
             (alter annotatedSentences dissoc annotatedSentences id)
             (send annotatedCounter dec)
@@ -51,30 +61,12 @@
   )
 )
 
-;; ----------------------
-;; Add annotatedSentences
-;; ----------------------
 (defn addSentence [sentence words tags]
   (dosync 
     (alter annotatedSentences conj {(keyword (str (UUID/randomUUID))) {:counter 0, :sentence sentence :words words :tags tags}})
     (send annotatedCounter inc)
   )
 )
-
-;; -----------------
-;; Get functions (sentences in different states)
-;; -----------------
-;; (defn getAnnotated []
-;;   (@annotatedSentences)
-;; )
-;;
-;; (defn getCorroborated []
-;;   (@corroboratedSentences)
-;; )
-;;
-;; (defn getSentences []
-;;   (@sentences)
-;; )
 
 ;; -----------------------------------------------------------------------------------------
 ;; Read in texts from annotated source
@@ -86,7 +78,7 @@
 (require '[clojure.string :as str])
 (defn readTxtFile []
   (with-open [rdr (reader "en-ud-train.conllu")]
-    (doseq [line (line-seq rdr)]
+    (doseq [^String line (line-seq rdr)]
       (if (.contains line "#") (def sentence line))
 
       (if (str/blank? line) 
@@ -110,15 +102,6 @@
   )
 )
 
-;; -----------
-;; Upvote Simulation
-;; -----------
-
-;; read from file
-;; upvote 10
-
-(defn serialize [m sep] (apply str (concat (interpose sep (vals m)) ["\n"])))
-
 (defn upvoteSimulationTask []
   (def i 0)
   (doseq [k (keys @annotatedSentences)] 
@@ -131,9 +114,6 @@
   )
 )
 
-;; -----------
-;; Output Textfile
-;; -----------
 (defn outputTxtFile []
   (spit "trainedModel.conll" "")
   (doseq [[key val] @corroboratedSentences] 
@@ -148,19 +128,13 @@
     (spit "trainedModel.conll" \newline :append true)
   )
 )
-;; -----------
-;; Annotate with the trained Model
-;; -----------
+
 (defn trainModel []
   (prn "training model")
   (time (Trainer/main (into-array String ["-train-file","form-index=1,tag-index=2,trainedModel.conll", "-tag-morph", "false", "-model-file", "fromClojure.marmot"])))
   (prn "model trained")
 )
 
-;; (trainModel)
-;; ---------
-;; Run Model
-;; ---------
 (defn runModel []
   (prn "running model")
   (time (Annotator/main (into-array String ["--model-file", "fromClojure.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "taggedFile" ])))
@@ -168,7 +142,7 @@
 )
 
 (defn upvoteSimulationMultipleUsers [nthreads]
-  (def pool (Executors/newFixedThreadPool nthreads))
+  (def pool (^Executors.newFixedThreadPool Executors/newFixedThreadPool nthreads))
 
   (time (while (> @annotatedCounter 0) 
     (.execute pool upvoteSimulationTask) ))
@@ -176,6 +150,7 @@
   (.shutdown pool)
   (pm)
 )
+
 
 (defn runProgram [] 
   (println)
@@ -197,8 +172,8 @@
             (runProgram)
           )
 
-      "r" ((readTxtFile) (runProgram))
-      "u" (time ((upvoteSimulationMultipleUsers 50) (prn retryCounter) (runProgram)))
+      "r" (do(time(readTxtFile)) (runProgram))
+      "u" (time ((upvoteSimulationMultipleUsers 40) (prn transactionsCounter) (runProgram)))
       "o" ((outputTxtFile) (runProgram))
       "train" ((trainModel) (runProgram))
       "run" ((runModel) (runProgram))
