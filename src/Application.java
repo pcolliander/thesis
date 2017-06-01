@@ -18,11 +18,6 @@ enum CorruptionMethod {
 
 class Application {
   public static void main(String[] args) throws IOException {
-
-    Date date = new Date();
-
-    System.out.println("Date: " + date.toString());
-
     int nthreads = 5;
     nlp app = new nlp();
 
@@ -32,7 +27,6 @@ class Application {
     while (true) {
       System.out.println();
       System.out.println("webSim = do all");
-
       System.out.println("nlpNaive = run naive correption of tags and compare results");
       System.out.println("nlpClever = run clever correption of tags and compare results");
       System.out.println("o = output txt file.");
@@ -211,18 +205,14 @@ class nlp {
     Annotator.main(new String[] { "--model-file", "modelEnglish.marmot", "--test-file", "form-index=1,en-ud-test.conll",  "--pred-file", "./taggedFiles/"+corruptFeedback+"corruptTaggedFile" }); 
   }
 
-
   public void corruptTagsNaive(int corruptFeedback) {
-    System.out.println("Naive tagging.");
-    HashSet<Integer> rand_nums;
-
     for(TaggedSentence sentence : annotatedSentences.getSentences()) {
-      rand_nums = new HashSet<>();
+      HashSet<Integer> rand_nums = new HashSet<>();
+
       int X = (corruptFeedback * sentence.getWordCount()) / 100;
       for(int i = 0; i < sentence.getSize(); i++) {
         rand_nums.add(i);
       }
-
       for (int index = 0; index < X; index++) {
         sentence.corruptTag(index, getDifferentTagNaive(sentence.getTag(index)));
       }
@@ -242,11 +232,7 @@ class nlp {
   }
 
   public void corruptTagsClever(int corruptFeedback) {
-    // Count all the words I corrupt -- and then divide by the total to get the amount of tags corrupted.
     Pattern pattern = Pattern.compile("ADJ|ADV|AUX|NOUN|NUM|PROPN|VERB");
-
-    System.out.println("corruptedTagsCleverCounter at the start of method (should be 0)); " + corruptedTagsCleverCounter);
-
     for (TaggedSentence sentence : annotatedSentences.getSentences()) {
       HashSet<Integer> matches = new HashSet<Integer>();
       HashSet<Integer> rand_indices = new HashSet<>();
@@ -262,29 +248,17 @@ class nlp {
         currentIndex++;
       }
 
-      // corrupt X percent of them.
       int X = (corruptFeedback * matches.size()) / 100;
-
       currentIndex = 0;
       for (int i : matches) {
         if (currentIndex == X) break;
         rand_indices.add(i);
         currentIndex++;
       }
-
-      // System.out.println(X);
-      // System.out.println("corruptedTagsCleverCounter (before): " + corruptedTagsCleverCounter);
-      // System.out.println("matches: " + matches);
-      // System.out.println("rand_indices" + rand_indices);
-      // System.out.println("all indices " + sentence.getTags());
-
       for (int index : rand_indices) {
         sentence.corruptTag(index, getDifferentTagClever(sentence.getTag(index)));
         corruptedTagsCleverCounter++;
       }
-
-      // System.out.println("corruptedTagsCleverCounter: (after) " + corruptedTagsCleverCounter);
-
     }
   }
 
